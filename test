@@ -1,0 +1,9 @@
+push 1
+push 2
+div
+push 13
+add
+push 8
+div
+push   
+out
