@@ -2,9 +2,13 @@
 
 int main()
 {
-    FILE* fp = fopen( "test", "r" );
+    Fileinf cmnds = {};
+    
+    fillFileinf( &cmnds );
 
-    Calculate( fp );
+    printData( &cmnds );
+
+    Calculate( &cmnds );
 
     return 0;
 }

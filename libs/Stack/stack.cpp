@@ -6,12 +6,10 @@
 #define CANARY_
 #define HASH_
 
-#undef CANARY_
-#undef HASH_
+//#undef CANARY_
+//#undef HASH_
 
 static long long HashCalc( const void* stack, size_t size );
-
-static void HashRefresh( struct Stack* stack );
 
 static void HashRefresh( struct Stack* stack );
 
@@ -202,6 +200,10 @@ static STACK_ERRORS PrintError( enum STACK_ERRORS error )
 
     switch( error )
     {
+    ERR_CASE( STACK_PTR_IS_NULL )
+
+    ERR_CASE( NOT_ENOUGH_MEMORY )
+    
     ERR_CASE( DATA_PTR_IS_NULL )
 
     ERR_CASE( SIZE_IS_LOWER_THAN_NULL )
@@ -225,7 +227,7 @@ static STACK_ERRORS PrintError( enum STACK_ERRORS error )
     default:
         SET_DEFAULT_COLOR;
 
-        return ALLRIGHT;
+        return STACK_ALLRIGHT;
     }
 }
 
@@ -242,7 +244,7 @@ STACK_ERRORS StackDtor( struct Stack* stack )
         return error;
     }
 
-    for( int i = 0; i < stack->size; i++ )
+    for( size_t i = 0; i < stack->size; i++ )
         stack->data[i] = -1;
     
     stack->capacity = -1;
@@ -263,7 +265,7 @@ STACK_ERRORS StackDtor( struct Stack* stack )
 
     free( ( unsigned long long* ) stack->data - 1 );
 
-    return ALLRIGHT;
+    return STACK_ALLRIGHT;
 }
 
 static STACK_ERRORS StackResize( struct Stack* stack, const size_t destCap )
@@ -317,7 +319,7 @@ static STACK_ERRORS StackResize( struct Stack* stack, const size_t destCap )
         return error;
     }
 
-    return ALLRIGHT;
+    return STACK_ALLRIGHT;
 }
 
 STACK_ERRORS StackVerify( const struct Stack* stack )
@@ -329,11 +331,11 @@ STACK_ERRORS StackVerify( const struct Stack* stack )
     if( stack->size > stack->capacity ) return SIZE_IS_GREATER_THAN_CAPACITY;
 
     #ifdef CANARY_
-    if( stack->leftChicken != LEFT_CHIKEN_DEFAULT_NUM ) return LEFT_CHIKEN_HAS_FALLEN;
-    if( stack->rightChicken != RIGHT_CHICKEN_DEFAULT_NUM ) return RIGHT_CHIKEN_HAS_FALLEN;
+    if( !CheckLeftChicken( ( Stack* ) stack ) ) return LEFT_CHIKEN_HAS_FALLEN;
+    if( !CheckRightChicken( ( Stack* ) stack ) ) return RIGHT_CHIKEN_HAS_FALLEN;
 
     if( !CheckLeftChicken( ( Stack* ) stack ) ) return DATA_LEFT_CHIKEN_HAS_FALLEN;
-    if( !CheckRightChicken(( Stack* ) stack ) ) return DATA_RIGHT_CHIKEN_HAS_FALLEN;
+    if( !CheckRightChicken( ( Stack* ) stack ) ) return DATA_RIGHT_CHIKEN_HAS_FALLEN;
     #endif
 
     #ifdef HASH_
@@ -341,7 +343,7 @@ STACK_ERRORS StackVerify( const struct Stack* stack )
     if( !DataHashCheck( ( Stack* ) stack ) ) return DATA_HASH_HAS_FALLEN;
     #endif
 
-    return ALLRIGHT;
+    return STACK_ALLRIGHT;
 }
 
 STACK_ERRORS StackPop( struct Stack* stack, StackElem* elem )
@@ -405,7 +407,7 @@ STACK_ERRORS StackPop( struct Stack* stack, StackElem* elem )
         return error;
     }
 
-    return ALLRIGHT;
+    return STACK_ALLRIGHT;
 }
 
 STACK_ERRORS StackPush( struct Stack* stack, StackElem elem )
@@ -451,7 +453,7 @@ STACK_ERRORS StackPush( struct Stack* stack, StackElem elem )
         return error;
     }
 
-    return ALLRIGHT;
+    return STACK_ALLRIGHT;
 }
 
 void _StackDump( const struct Stack* stack, const char* fileName,
@@ -549,12 +551,12 @@ void _StackDump( const struct Stack* stack, const char* fileName,
     {
         printf( "\tStack elements:\n" "\t{\n" );
 
-        for( int i = 0; i < stack->capacity; i++ )
+        for( size_t i = 0; i < stack->capacity; i++ )
         {                 
             if( i < stack->size )                                           
-                printf( "\t\t" "*[%d] = %d\n", i, stack->data[i] ); 
+                printf( "\t\t" "*[%zu] = %lld\n", i, stack->data[i] ); 
             else
-                printf( "\t\t" " [%d] = %d\n", i, stack->data[i] );
+                printf( "\t\t" " [%zu] = %lld\n", i, stack->data[i] );
         }  
         
         printf( "\t}\n\n" );

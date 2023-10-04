@@ -84,46 +84,6 @@ void MyStrcat( char* dest, char* src )
     MyStrcpy( dest, src );
 }
 
-/*int MyReverseStrcmp( const void* a, const void* b )
-{
-    struct String ap = *( String* ) a;
-    struct String bp = *( String* ) b;
-
-    for( int i = 1, j = 1; ap.len >= i && bp.len >= j ; )
-    {
-        if( !isLetter( ap.ptr[ap.len - i] ) )
-        {
-            i++;
-
-            continue;
-        }
-
-        if( !isLetter( bp.ptr[bp.len - j] ) )
-        {
-            j++;
-
-            continue;
-        }
-
-        if( toLow( ap.ptr[ap.len - i] ) > toLow( bp.ptr[bp.len - j] ) )
-            return 1;
-        else if( toLow( ap.ptr[ap.len - i] ) < toLow( bp.ptr[bp.len - j] ) )
-            return -1;
-
-        i++;
-        j++;
-    }
-    
-    if( ap.len == bp.len )
-        return 0;
-    if( ap.len > bp.len)
-        return 1;
-    else
-        return -1;
-}*/
-
-
-
 void MyStrncat( char* dest, char* src, size_t count )
 {
     while( *dest++ )
@@ -142,6 +102,21 @@ int fgets( FILE* fp, char* str )
     size_t len = 0;
 
     for( int ch = 0; ( ch = getc( fp ) ) != EOF && ch != '\n'; len++ )
+        *str++ = ch;
+    
+    *str = '\0';
+
+    return len;
+}
+
+int fngets( FILE* fp, char* str, size_t maxlen )
+{
+    assert( fp != NULL );
+    assert( str != NULL );
+
+    size_t len = 0;
+
+    for( int ch = 0; ( ( ch = getc( fp ) ) != EOF && ch != '\n' && ch != ' ' ) && len < maxlen; len++ )
         *str++ = ch;
     
     *str = '\0';

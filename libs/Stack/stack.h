@@ -15,7 +15,9 @@ _StackDump( stack, __FILE__, __func__, __LINE__ );
 StackCtor( stack, #stack, __FILE__,         \
            __func__, __LINE__ );            
 
-typedef int StackElem;
+typedef long long StackElem;
+
+typedef unsigned long long Canary;
 
 const unsigned long long LEFT_CHIKEN_DEFAULT_NUM = ( 1ull << 63 ) - 1;
 
@@ -49,7 +51,7 @@ enum STACK_ERRORS
 
     NOT_ENOUGH_MEMORY = -109,
 
-    ALLRIGHT = 0
+    STACK_ALLRIGHT = 0
 };
 
 struct Stack

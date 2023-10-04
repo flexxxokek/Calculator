@@ -5,12 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../String/stroki.h"
 #include "../Stack/stack.h"
+#include "../String/dataFuncs.h"
 
-const size_t NUM_OF_CMNDS = 6;
+const size_t NUM_OF_CMNDS = 7;
 
-const size_t MAX_CMND_LEN = 4;
+const size_t MAX_CMND_LEN = 5;
 
 const long long MULTIPLYER = 100;
 
@@ -21,6 +21,18 @@ enum CALC_ERRS
     SYNTAX_ERR
 };
 
-void Calculate( FILE* fp );
+enum CMNDS
+{
+    IN = 0,
+    PUSH = 1,
+    ADDITION = 2,
+    SUBTRACTION = 3,
+    MULTIPLICATION = 4,
+    DIVISION = 5,
+    OUT = 6,
+    INVALID_SYNTAX = 7
+};
+
+void Calculate( Fileinf* cmnds );
 
 #endif

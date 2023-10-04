@@ -1,141 +1,164 @@
 #include "calc.h"
 
-const char* CMNDS[NUM_OF_CMNDS] = { "push",
-                                    "add",
-                                    "sub",
-                                    "mul",
-                                    "div",
-                                    "out"   };
+static CALC_ERRS RunCommand( Fileinf* cmnds, size_t line, Stack* stk, CMNDS cmnd );
 
-static CALC_ERRS RunCommand( FILE* fp, Stack* stk, const char* cmnd );
+#define SEP    \
+printf( "-------------------------------------------------------------------\n" );
 
-static CALC_ERRS RunCommand( FILE* fp, Stack* stk, const char* cmnd )
+static CALC_ERRS RunCommand( Fileinf* cmnds, size_t line, Stack* stk, CMNDS cmnd )
 {
     int err = 0;
+    
+    StackElem a = 0;
 
-    if( !strcmp( cmnd, CMNDS[0] ) )     //push
+    StackElem b = 0;
+
+    switch( cmnd )
     {
-        StackElem a = 0;
+        case CMNDS::IN:
+            printf( "-------------------------------------------------------------------\n"
+                    "Please, enter number: " );
 
-        if( fscanf( fp, "%lld", &a ) != 1 )
+            if( scanf( "%lld", &a ) != 1 )
+            {
+                printf( "SYNTAX ERROR in line: %zu\n"
+                        "-------------------------------------------------------------------\n\n",
+                        line );
+
+                abort();
+            }
+
+            err += StackPush( stk, a * MULTIPLYER );
+
+            if( !err )
+                printf( "successfully pushed %lld \n"
+                        "-------------------------------------------------------------------\n\n", a );
+
+            return CALC_ERRS::OK;
+
+        case CMNDS::PUSH:
+            if( sscanf( cmnds->strData[line].ptr, "%lld", &a ) != 1 )
+            {
+                printf( "-------------------------------------------------------------------\n"
+                        "SYNTAX ERROR in line: %zu\n"
+                        "-------------------------------------------------------------------\n\n",
+                        line );
+
+                abort();
+            }
+
+            err += StackPush( stk, a * MULTIPLYER );
+
+            if( !err )
+                printf( "-------------------------------------------------------------------\n"
+                        "successfully pushed %lld \n"
+                        "-------------------------------------------------------------------\n\n", a );
+
+            return CALC_ERRS::OK;
+        
+        case CMNDS::ADDITION:
+            err += StackPop( stk, &a );
+
+            err += StackPop( stk, &b );
+
+            err += StackPush( stk, b + a );
+
+            if( !err )
+                printf( "-------------------------------------------------------------------\n"
+                        "successfully completed addtion: %lld + %lld = %lld \n"
+                        "-------------------------------------------------------------------\n\n", 
+                        b, a, b + a );
+
+            return CALC_ERRS::OK;
+
+        case CMNDS::SUBTRACTION:
+            err += StackPop( stk, &a );
+
+            err += StackPop( stk, &b );
+
+            err += StackPush( stk, b - a );
+
+            if( !err )
+                printf( "-------------------------------------------------------------------\n"
+                        "successfully completed subtraction: %lld - %lld = %lld \n"
+                        "-------------------------------------------------------------------\n\n",
+                        b, a, b - a );
+
+            return CALC_ERRS::OK;
+
+        case CMNDS::MULTIPLICATION:
+            err += StackPop( stk, &a );
+
+            err += StackPop( stk, &b );
+
+            err += StackPush( stk, a * b / MULTIPLYER );
+
+            if( !err )    
+                printf( "-------------------------------------------------------------------\n"
+                        "successfully completed multiplication: %lld * %lld = %lld \n"
+                        "-------------------------------------------------------------------\n\n",
+                        b, a, a * b / MULTIPLYER );
+
+            return CALC_ERRS::OK;
+
+        case CMNDS::DIVISION:
+            err += StackPop( stk, &a );
+
+            err += StackPop( stk, &b );
+
+            StackPush( stk, ( b * MULTIPLYER ) / a );
+
+            if( !err )
+                printf( "-------------------------------------------------------------------\n"
+                        "successfully completed subtraction: %lld / %lld = %lld \n"
+                        "-------------------------------------------------------------------\n\n", 
+                        b, a, ( b * MULTIPLYER ) / a );
+
+            return CALC_ERRS::OK;
+
+        case CMNDS::OUT:
         {
-            printf( "SYNTAX ERROR\n" );
+            err += StackPop( stk, &a );
 
-            abort();
+            if( err )
+            {
+                printf( "-------------------------------------------------------------------\n"
+                        "error occured in the output function\n"
+                        "-------------------------------------------------------------------\n\n" );
+            }
+
+            double res = ( double ) a / MULTIPLYER;
+            
+            printf( "-------------------------------------------------------------------\n"
+                    "final result of calculation: %g\n"
+                    "-------------------------------------------------------------------\n\n",
+                    res);
+
+            return CALC_ERRS::OK;
         }
 
-        err += StackPush( stk, a * MULTIPLYER );
+        default:
+            printf( "-------------------------------------------------------------------\n"
+                    "SYNTAX ERROR in line: %zu\n"
+                    "-------------------------------------------------------------------\n\n",
+                    line );
 
-        if( !err )
-            printf( "successfully pushed %lld \n", a );
-
-        return CALC_ERRS::OK;
+            return CALC_ERRS::SYNTAX_ERR;
     }
 
-    if( !strcmp( cmnd, CMNDS[1] ) )     //addition
-    {
-        StackElem a = 0;
-
-        StackElem b = 0;
-
-        err += StackPop( stk, &a );
-
-        err += StackPop( stk, &b );
-
-        err += StackPush( stk, a + b );
-
-        if( !err )
-            printf( "successfully completed addtion: %lld + %lld = %lld \n", b, a, a + b );
-
-        return CALC_ERRS::OK;
-    }
-
-    if( !strcmp( cmnd, CMNDS[2] ) )     //subtraction
-    {
-        StackElem a = 0;
-
-        StackElem b = 0;
-
-        err += StackPop( stk, &a );
-
-        err += StackPop( stk, &b );
-
-        err += StackPush( stk, a - b );
-
-        if( !err )
-            printf( "successfully completed subtraction: %lld - %lld = %lld \n", b, a, a - b );
-
-        return CALC_ERRS::OK;
-    }
-
-    if( !strcmp( cmnd, CMNDS[3] ) )     //multiplication
-    {
-        StackElem a = 0;
-
-        StackElem b = 0;
-
-        err += StackPop( stk, &a );
-
-        err += StackPop( stk, &b );
-
-        err += StackPush( stk, a * b / MULTIPLYER );
-
-        if( !err )    
-            printf( "successfully completed multiplication: %lld * %lld = %lld \n", b, a, a * b / MULTIPLYER );
-
-        return CALC_ERRS::OK;
-    }
-
-    if( !strcmp( cmnd, CMNDS[4] ) )     //division
-    {
-        StackElem a = 0;
-
-        StackElem b = 0;
-
-        err += StackPop( stk, &a );
-
-        err += StackPop( stk, &b );
-
-        StackPush( stk, ( b * MULTIPLYER ) / a );
-
-        if( !err )
-            printf( "successfully completed subtraction: %lld / %lld = %lld \n", b, a, ( b * MULTIPLYER ) / a );
-
-        return CALC_ERRS::OK;
-    }
-
-    if( !strcmp( cmnd, CMNDS[5] ) )     //output
-    {
-        StackElem a = 0;
-
-        err += StackPop( stk, &a );
-
-        if( err )
-        {
-            printf( "error occured in the output function\n" );
-        }
-        double res = ( double ) a / MULTIPLYER;
-
-        printf( "final result of calculation: %g\n", res);
-
-        return CALC_ERRS::OK;
-    }
-
-    printf( "SYNTAX ERROR\n" );
-
-    return CALC_ERRS::SYNTAX_ERR;
+    return CALC_ERRS::OK;
 }
 
-void Calculate( FILE* fp )
+void Calculate( Fileinf* cmnds )
 {
-    char cmnd[MAX_CMND_LEN] = {};
+    CMNDS cmnd = CMNDS::INVALID_SYNTAX;
 
     Stack stk = {};
 
     STACK_CTOR( &stk );
 
-    while( fscanf( fp, "%s", cmnd ) != EOF )
+    for( size_t line = 0; sscanf( cmnds->strData[line].ptr, "%d", &cmnd ) == 1; line++ )
     {
-        RunCommand( fp, &stk, cmnd );
+        RunCommand( cmnds, line, &stk, cmnd );
     }
 }
