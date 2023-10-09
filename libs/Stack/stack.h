@@ -15,7 +15,7 @@ _StackDump( stack, __FILE__, __func__, __LINE__ );
 StackCtor( stack, #stack, __FILE__,         \
            __func__, __LINE__ );            
 
-typedef long long StackElem;
+typedef long long int StackElem;
 
 typedef unsigned long long Canary;
 

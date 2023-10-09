@@ -1,13 +1,5 @@
 #include "decompiller.h"
 
-const char* CMNDS_NAME[NUM_OF_CMNDS] = { "in",
-                                         "push",
-                                         "add",
-                                         "sub",
-                                         "mul",
-                                         "div",
-                                         "out"  };
-
 static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line );
 
 static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
@@ -15,11 +7,15 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
     assert( dest != nullptr );
     assert( src != nullptr );
 
-    CMNDS cmnd = CMNDS::INVALID_SYNTAX;
+    int cmnd = CMNDS::INVALID_SYNTAX;
 
     sscanf( src->strData[line].ptr, "%d", &cmnd );
 
-    switch ( cmnd )
+    int cmnd_code = cmnd & 0xf;
+
+    int cmnd_arg = cmnd >> 4;
+
+    switch ( cmnd_code )
     {
         case CMNDS::IN:
             fprintf( dest, "%s\n", CMNDS_NAME[0] );
@@ -28,18 +24,52 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
 
         case CMNDS::PUSH:
         {
-            StackElem num = 0;
-
-            if( sscanf( src->strData[line].ptr + 1, "%lld", &num ) != 1 )
+            switch( cmnd_arg )
             {
-                fprintf( dest, "INVALID_SYNTAX\n" );
+                case 1:
+                {
+                    StackElem num = 0;
 
-                return CALC_ERRS::SYNTAX_ERR;
+                    if( sscanf( src->strData[line].ptr + 2, "%lld", &num ) != 1 )
+                    {
+                        fprintf( dest, "INVALID_SYNTAX\n" );
+
+                        return CALC_ERRS::SYNTAX_ERR;
+                    }
+
+                    fprintf( dest, "%s %lld\n", CMNDS_NAME[1], num );
+
+                    return CALC_ERRS::OK;
+                }
+
+                case 2:
+                {
+                    int reg_num = 0;
+
+                    if( sscanf( src->strData[line].ptr + 2, "%d", &reg_num ) != 1 )
+                    {
+                        fprintf( dest, "INVALID_SYNTAX\n" );
+
+                        return CALC_ERRS::SYNTAX_ERR;
+                    }
+
+                    if( 4 < reg_num || reg_num < 1 )
+                    {
+                        fprintf( dest, "INVALID_SYNTAX\n" );
+
+                        return CALC_ERRS::SYNTAX_ERR;
+                    }
+
+                    fprintf( dest, "%s r%cx\n", CMNDS_NAME[1], 'a' );
+
+                    return CALC_ERRS::OK;
+                }
+
+                default:
+                    fprintf( dest, "INVALID_SYNTAX\n" );
+
+                    return CALC_ERRS::SYNTAX_ERR;
             }
-
-            fprintf( dest, "%s %lld\n", CMNDS_NAME[1], num );
-
-            return CALC_ERRS::OK;
         }
 
         case CMNDS::ADDITION:

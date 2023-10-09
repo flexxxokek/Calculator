@@ -2,9 +2,10 @@
 #define DATA_FUNCS_
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
-#include <sys\stat.h>
-#include <sys\file.h>
+#include <sys/stat.h>
+#include <sys/file.h>
 
 #include "stroki.h"
 #include "constants.h"

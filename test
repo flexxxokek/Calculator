@@ -1,9 +1,9 @@
-push 1
-push 2
+push 1565
+push 25555
 div
-push 13
-add
-push 8
+pop rax
+in
+push rax
 div
-push   
-out
+out 
+hlt

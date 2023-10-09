@@ -3,12 +3,14 @@
 int main()
 {
     Fileinf cmnds = {};
-    
+
+    SPU spu = {};
+
+    SPU_Ctor( &spu, cmnds.trueSize );
+
     fillFileinf( &cmnds );
 
-    printData( &cmnds );
-
-    Calculate( &cmnds );
+    Calculate( &cmnds, &spu );
 
     return 0;
 }
