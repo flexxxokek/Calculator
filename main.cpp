@@ -2,15 +2,11 @@
 
 int main()
 {
-    Fileinf cmnds = {};
+    char fileName[ MAX_FILE_NAME_LEN ];
 
-    SPU spu = {};
+    getFileName( fileName );
 
-    SPU_Ctor( &spu, cmnds.trueSize );
-
-    fillFileinf( &cmnds );
-
-    Calculate( &cmnds, &spu );
+    Calculate( fileName );
 
     return 0;
 }

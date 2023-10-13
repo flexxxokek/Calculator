@@ -1,17 +1,16 @@
-#include "compiller.h"
+#include "assembler.h"
 
 static int ScanCmnd( Fileinf* src, size_t line, char* cmnd );
 
-static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line );
+static CALC_ERRS TranslateCmnd( void* p, size_t* fi, Fileinf* src, size_t line );
 
 static int ScanCmnd( Fileinf* src, size_t line, char* cmnd )
 {
     return sscanf( src->strData[line].ptr, CMND_SPECIFICATOR, cmnd );
 }
 
-static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
+static CALC_ERRS TranslateCmnd( void* p, size_t* fi, Fileinf* src, size_t line )
 {
-    assert( dest != nullptr );
     assert( src != nullptr );
 
     char cmnd[MAX_CMND_LEN] = {};
@@ -23,22 +22,22 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
 
     if( !strcmp( cmnd, CMNDS_NAME[0] ) )     //in
     {
-        fprintf( dest, "%d\n", CMNDS::IN );
+        *( ( char* ) p + *fi ) = CMNDS::IN;
 
         return CALC_ERRS::OK;
     }
 
     if( !strcmp( cmnd, CMNDS_NAME[1] ) )     //push
     {
-        StackElem num = 0;
+        StackElem arg = 0;
 
-        if( sscanf( src->strData[line].ptr + 4, "%lld", &num ) != 1 )
+        if( sscanf( src->strData[line].ptr + 4, "%lld", &arg ) != 1 )
         {
             char reg[4] = {};
 
             if( sscanf( src->strData[line].ptr + 4, "%3s", reg ) != 1 )
             {
-                fprintf( dest, "%d\n", CMNDS::INVALID_SYNTAX );
+                *( ( char* ) p + *fi ) = CMNDS::INVALID_SYNTAX;
 
                 return CALC_ERRS::SYNTAX_ERR;
             }
@@ -47,62 +46,70 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
 
             if( toLow( reg[0] ) == 'r' && toLow( reg[2] ) == 'x' && 1 <= reg_num && reg_num <= 4 )
             {
-                fprintf( dest, "%d %d\n", 2 << 4 | CMNDS::PUSH, reg_num );
+                *( ( char* ) p + *fi ) = 2 << 4 | CMNDS::PUSH;
+
+                *( ( char* ) p + ( ++*fi ) ) = reg_num;
 
                 return CALC_ERRS::OK;
             }
             else
             {
-                fprintf( dest, "%d\n", CMNDS::INVALID_SYNTAX );
+                *( ( char* ) p + *fi ) = INVALID_SYNTAX;
 
                 return CALC_ERRS::SYNTAX_ERR;
             }
             
         }
         
-        fprintf( dest, "%d %lld\n", 1 << 4 | CMNDS::PUSH, num );
+        //fprintf( dest, "%d %lld\n", 1 << 4 | CMNDS::PUSH, num );
+
+        *( ( char* ) p + *fi ) = 1 << 4 | CMNDS::PUSH;
+        
+        *( StackElem* ) ( ( char *) p + *fi  + 1 ) = arg;
+
+        *fi += sizeof( StackElem );
 
         return CALC_ERRS::OK;
     }
 
     if( !strcmp( cmnd, CMNDS_NAME[2] ) )     //addition
     {
-        fprintf( dest, "%d\n", CMNDS::ADDITION );
+        *( ( char* ) p + *fi ) = CMNDS::ADDITION;
 
         return CALC_ERRS::OK;
     }
 
     if( !strcmp( cmnd, CMNDS_NAME[3] ) )     //subtraction
     {
-        fprintf( dest, "%d\n", CMNDS::SUBTRACTION );
+        *( ( char* ) p + *fi ) = CMNDS::SUBTRACTION;
 
         return CALC_ERRS::OK;
     }
 
     if( !strcmp( cmnd, CMNDS_NAME[4] ) )     //multiplication
     {
-        fprintf( dest, "%d\n", CMNDS::MULTIPLICATION );
+        *( ( char* ) p + *fi ) = CMNDS::MULTIPLICATION;
 
         return CALC_ERRS::OK;
     }
 
     if( !strcmp( cmnd, CMNDS_NAME[5] ) )     //division
     {
-        fprintf( dest, "%d\n", CMNDS::DIVISION );
+        *( ( char* ) p + *fi ) = CMNDS::DIVISION;
 
         return CALC_ERRS::OK;
     }
 
     if( !strcmp( cmnd, CMNDS_NAME[6] ) )     //out
     {
-        fprintf( dest, "%d\n", CMNDS::OUT );
+        *( ( char* ) p + *fi ) = CMNDS::OUT;
 
         return CALC_ERRS::OK;
     }
 
     if( !strcmp( cmnd, CMNDS_NAME[7] ) )    //hlt
     {
-        fprintf( dest, "%d\n", CMNDS::HALT );
+        *( ( char* ) p + *fi ) = CMNDS::HALT;
 
         return CALC_ERRS::OK;
     }
@@ -113,7 +120,7 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
 
         if( sscanf( src->strData[line].ptr + 4, "%3s", reg ) != 1 )
             {
-                fprintf( dest, "%d\n", CMNDS::INVALID_SYNTAX );
+                *( ( char* ) p + *fi ) = CMNDS::INVALID_SYNTAX;
 
                 return CALC_ERRS::SYNTAX_ERR;
             }
@@ -122,33 +129,48 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
 
             if( toLow( reg[0] ) == 'r' && toLow( reg[2] ) == 'x' && 1 <= reg_num && reg_num <= 4 )
             {
-                fprintf( dest, "%d %d\n", 2 << 4 | CMNDS::POP_REG, reg_num );
+                *( ( char* ) p + *fi ) =  2 << 4 | CMNDS::POP_REG;
+
+                *( ( char* ) p + ( ++*fi ) ) = reg_num;
 
                 return CALC_ERRS::OK;
             }
             else
             {
-                fprintf( dest, "%d\n", CMNDS::INVALID_SYNTAX );
+                *( ( char* ) p + *fi ) = CMNDS::INVALID_SYNTAX;
 
                 return CALC_ERRS::SYNTAX_ERR;
             }
     }
 
-    fprintf( dest, "%d\n", CMNDS::INVALID_SYNTAX );
+    *( ( char* ) p + *fi ) = CMNDS::INVALID_SYNTAX;
 
     return CALC_ERRS::SYNTAX_ERR;
 }
 
-void Compile( const char* destFileName )
+void Assemble( const char* destFileName )
 {
     Fileinf src = {};
 
     fillFileinf( &src );
 
-    FILE* dest = fopen( destFileName, "w+" );
+    FILE* dest = fopen( destFileName, "wb" );
 
-    for( size_t line = 0; line < src.nlines; line++ )
+    void* p = calloc( 1, src.trueSize );
+
+    u_int64_t fi = 0;
+
+    if( p == nullptr )
     {
-        TranslateCmnd( dest, &src, line );
+        perror( "calloc error" );
+
+        return;
     }
+
+    for( size_t line = 0; line < src.nlines; line++, fi++ )
+    {
+        TranslateCmnd( p, &fi, &src, line );
+    }
+
+    fwrite( p, 1, fi, dest );
 }

@@ -6,7 +6,8 @@
 #include <string.h>
 
 #include "../Stack/stack.h"
-#include "../String/dataFuncs.h"
+#include "../Data/data.h"
+#include "../Io/io.h"
 
 const size_t NUM_OF_CMNDS = 10;
 
@@ -42,7 +43,7 @@ extern const char* CMNDS_NAME[NUM_OF_CMNDS];
 
 struct SPU
 {
-    size_t fi;
+    u_int64_t fi;
 
     Stack stk;
 
@@ -71,6 +72,8 @@ enum SPU_ERRS
 
 void SPU_Ctor( SPU* spu, u_int64_t comandsBuffSize );
 
-CALC_ERRS Calculate( Fileinf* cmnds, SPU* spu );
+void PrintCommands( SPU* spu, u_int64_t size );
+
+CALC_ERRS Calculate( const char* name );
 
 #endif

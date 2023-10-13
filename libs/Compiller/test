@@ -1,6 +1,0 @@
-in
-push 13
-push 1
-push 112
-div
-out

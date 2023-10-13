@@ -1,15 +1,15 @@
-#include "decompiller.h"
+#include "disassembler.h"
 
-static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line );
+static CALC_ERRS TranslateCmnd( FILE* dest, void* src, u_int64_t* fi);
 
-static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
+static CALC_ERRS TranslateCmnd( FILE* dest, void* src, u_int64_t* fi )
 {
     assert( dest != nullptr );
     assert( src != nullptr );
 
     int cmnd = CMNDS::INVALID_SYNTAX;
 
-    sscanf( src->strData[line].ptr, "%d", &cmnd );
+    *( ( char* ) &cmnd ) = *( ( char* ) src + *fi );
 
     int cmnd_code = cmnd & 0xf;
 
@@ -28,16 +28,11 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
             {
                 case 1:
                 {
-                    StackElem num = 0;
+                    StackElem arg = *( StackElem* ) ( ( char* ) src + *fi + 1 );
 
-                    if( sscanf( src->strData[line].ptr + 2, "%lld", &num ) != 1 )
-                    {
-                        fprintf( dest, "INVALID_SYNTAX\n" );
+                    *fi += sizeof( StackElem );
 
-                        return CALC_ERRS::SYNTAX_ERR;
-                    }
-
-                    fprintf( dest, "%s %lld\n", CMNDS_NAME[1], num );
+                    fprintf( dest, "%s %lld\n", CMNDS_NAME[1], arg );
 
                     return CALC_ERRS::OK;
                 }
@@ -46,12 +41,9 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
                 {
                     int reg_num = 0;
 
-                    if( sscanf( src->strData[line].ptr + 2, "%d", &reg_num ) != 1 )
-                    {
-                        fprintf( dest, "INVALID_SYNTAX\n" );
+                    reg_num = *( char* ) ( ( char* ) src + *fi + 1 );
 
-                        return CALC_ERRS::SYNTAX_ERR;
-                    }
+                    *fi += sizeof( char );
 
                     if( 4 < reg_num || reg_num < 1 )
                     {
@@ -97,6 +89,23 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
 
             return CALC_ERRS::OK;
 
+        case CMNDS::HALT:
+            fprintf( dest, "%s\n", CMNDS_NAME[7] );
+
+            return CALC_ERRS::OK;
+
+        case CMNDS::POP_REG:
+        {
+            char arg = 0;
+
+            arg = *( ( char* ) src + ( ++*fi ) );
+
+            fprintf( dest, "%s\n", CMNDS_NAME[8] );
+
+            return CALC_ERRS::OK;
+            
+        }
+
         default:
             fprintf( dest, "INVALID_SYNTAX\n" );
 
@@ -104,16 +113,36 @@ static CALC_ERRS TranslateCmnd( FILE* dest, Fileinf* src, size_t line )
     }
 }
 
-void Decompile( const char* destFileName )
+void Disassemble( const char* name, const char* destFileName )
 {
-    Fileinf src = {};
+    u_int64_t size = getFileSize( name );
 
-    fillFileinf( &src );
+    FILE* src = fopen( name, "rb" );
 
-    FILE* dest = fopen( destFileName, "w+" );
+    FILE* dest = fopen( destFileName, "w" );
 
-    for( size_t line = 0; line < src.nlines; line++ )
+    SPU cmndsBuff = {};
+
+    SPU_Ctor( &cmndsBuff, size );
+
+    fread( cmndsBuff.commands, size, 1, src );
+
+    PrintCommands( &cmndsBuff, size );
+
+    int cmnd = CMNDS::HALT;
+
+    StackElem arg = 0;
+
+    for( ; cmndsBuff.fi < size; cmndsBuff.fi++ )
     {
-        TranslateCmnd( dest, &src, line );
+        *( ( char* ) &cmnd ) = *( ( char* ) cmndsBuff.commands + cmndsBuff.fi );
+
+        int cmnd_num = cmnd & 0xf;
+
+        int arg_type = cmnd >> 4;
+
+        printf( "%d %lld\n", cmnd, arg_type );
+
+        TranslateCmnd( dest, cmndsBuff.commands, &cmndsBuff.fi );
     }
 }
