@@ -11,9 +11,9 @@ static CALC_ERRS TranslateCmnd( FILE* dest, void* src, u_int64_t* fi )
 
     *( ( char* ) &cmnd ) = *( ( char* ) src + *fi );
 
-    int cmnd_code = cmnd & 0xf;
+    int cmnd_code = cmnd & 0x1f;
 
-    int cmnd_arg = cmnd >> 4;
+    int cmnd_arg = cmnd >> 5;
 
     switch ( cmnd_code )
     {
@@ -94,7 +94,7 @@ static CALC_ERRS TranslateCmnd( FILE* dest, void* src, u_int64_t* fi )
 
             return CALC_ERRS::OK;
 
-        case CMNDS::POP_REG:
+        case CMNDS::POP:
         {
             char arg = 0;
 
@@ -121,28 +121,33 @@ void Disassemble( const char* name, const char* destFileName )
 
     FILE* dest = fopen( destFileName, "w" );
 
-    SPU cmndsBuff = {};
+    u_int64_t ip = 0;
 
-    SPU_Ctor( &cmndsBuff, size );
+    void* cmnds = calloc( 1, size );
 
-    fread( cmndsBuff.commands, size, 1, src );
+    if( !cmnds )
+    {
+        perror( "calloc error:" );
 
-    PrintCommands( &cmndsBuff, size );
+        abort();
+    }
+
+    fread( cmnds, size, 1, src );
 
     int cmnd = CMNDS::HALT;
 
     StackElem arg = 0;
 
-    for( ; cmndsBuff.fi < size; cmndsBuff.fi++ )
+    for( ; ip < size; ip++ )
     {
-        *( ( char* ) &cmnd ) = *( ( char* ) cmndsBuff.commands + cmndsBuff.fi );
+        *( ( char* ) &cmnd ) = *( ( char* ) cmnds + ip );
 
-        int cmnd_num = cmnd & 0xf;
+        int cmnd_num = cmnd & 0x1f;
 
-        int arg_type = cmnd >> 4;
+        int arg_type = cmnd >> 5;
 
         printf( "%d %lld\n", cmnd, arg_type );
 
-        TranslateCmnd( dest, cmndsBuff.commands, &cmndsBuff.fi );
+        TranslateCmnd( dest, cmnds, &ip );
     }
 }

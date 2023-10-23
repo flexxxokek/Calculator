@@ -6,7 +6,11 @@ int main()
 
     getFileName( name );
 
-    Disassemble( name, "dest1" );
+    char destName[MAX_FILE_NAME_LEN] = {};
+
+    getFileName( destName );
+
+    Disassemble( name, destName );
 
     return 0;
 }

@@ -3,10 +3,15 @@
 
 #include <stdio.h>
 
-#define SET_RED_COLOR printf( "\x1b[31;1m" )
-#define SET_GREEN_COLOR printf( "\x1b[32;1m" )
-#define SET_GRAY_COLOR printf( "\x1b[37;1m")
-#define SET_DEFAULT_COLOR printf( "\x1b[0m" )
+#define SET_RED_COLOR       printf( "\x1b[31;1m" )
+#define SET_GREEN_COLOR     printf( "\x1b[32;1m" )
+#define SET_GRAY_COLOR      printf( "\x1b[37;1m")
+#define SET_DEFAULT_COLOR   printf( "\x1b[0m" )
+
+#define RED_COLOR                   "\x1b[31;1m"
+#define GREEN_COLOR                 "\x1b[32;1m" 
+#define GRAY_COLOR                  "\x1b[37;1m"
+#define DEFAULT_COLOR               "\x1b[0m"
 
 #define STACK_DUMP( stack )                         \
 _StackDump( stack, __FILE__, __func__, __LINE__ );    

@@ -2,7 +2,7 @@
 
 int main()
 {
-    char fileName[ MAX_FILE_NAME_LEN ];
+    char fileName[MAX_FILE_NAME_LEN];
 
     getFileName( fileName );
 

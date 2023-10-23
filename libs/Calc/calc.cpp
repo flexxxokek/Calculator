@@ -8,30 +8,38 @@ const char* CMNDS_NAME[NUM_OF_CMNDS] = { "in",
                                          "div",
                                          "out",
                                          "hlt",
-                                         "pop"  };
+                                         "pop",
+                                         "ja",
+                                         "jae",
+                                         "jb",
+                                         "jbe",
+                                         "je",
+                                         "jne",
+                                         "jmp",
+                                         "jm"  };
 
 static StackElem PopToReg( SPU* spu, int reg_num );
 
 static StackElem PushFromReg( SPU* spu, int reg_num );
 
-static void SPU_Dump( SPU* spu, u_int64_t size );
+static void SPU_Dump( SPU* spu, int64_t size );
+
+static CALC_ERRS DoCommand( SPU* spu, size_t line );
 
 static int SPU_Verify( SPU* spu )
 {
     int err = 0;
 
-    if( spu == nullptr ) err |= SPU_ERRS::SPU_IS_NULL;
+    if( spu == nullptr )            return err |= SPU_ERRS::SPU_IS_NULL;
 
-    if( spu->commands == nullptr ) err |= SPU_ERRS::COMMANDS_IS_NULL;
+    if( spu->commands == nullptr )  err |= SPU_ERRS::COMMANDS_IS_NULL;
 
-    if( &spu->stk == nullptr ) err |= SPU_ERRS::STACK_IS_NULL;
-
-    if( spu->fi < 0 ) err |= SPU_ERRS::FI_IS_LOWER_THAN_NULL;
+    if( StackVerify( &spu->stk ) )  err |= SPU_ERRS::STACK_IS_CURSED;
 
     return err;
 }
 
-void PrintCommands( SPU* spu, u_int64_t size )
+static void PrintCommands( SPU* spu, int64_t size )
 {
     printf( "\tcommands array:\n");
 
@@ -41,38 +49,39 @@ void PrintCommands( SPU* spu, u_int64_t size )
 
     char* p = ( char* ) spu->commands;
 
-    char* sep = " ";
+    const char* sep = " ";
 
-    for( int i = 0; i < size; p++, i++ )
+    for( int64_t i = 0; i < size; p++, i++ )
     {
-        char cmnd_num = *p & 0xf;
+        char cmnd_num = *p & 0x1f;
 
-        char arg_type = *p >> 4;    
+        char arg_type = *p >> 5;    
 
-        if( i == spu->fi )
+        if( ( u_int64_t ) i == spu->ip )
         {
-            //printf( "fi -> %d = %d <- i\n", spu->fi, i );
-
-            sep = "\033[33;1m>";
+            sep = GREEN_COLOR ">";
         }
 
-        if( ( cmnd_num == CMNDS::POP_REG || ( cmnd_num == CMNDS::PUSH && arg_type == 2 ) ) && i == spu->fi - sizeof( char ) - 1 )
+        if( ( cmnd_num == CMNDS::POP || ( cmnd_num == CMNDS::PUSH && arg_type == 2 ) ) && ( u_int64_t ) i == spu->ip - sizeof( char ) - 1 )
         {
-            sep = "\033[33;1m>";
-            
-            //printf( "\t%d %d\n", spu->fi - sizeof( char ), i );
+            sep = GREEN_COLOR ">";
         }
 
-        if( cmnd_num == CMNDS::PUSH && arg_type == 1 && i == spu->fi - sizeof( StackElem ) - 1 )
+        if( ( cmnd_num == CMNDS::PUSH ||
+              cmnd_num == CMNDS::JUMP || cmnd_num == CMNDS::JUMP_ABOVE || cmnd_num == CMNDS::JUMP_ABOVE_OR_EQUAL ||
+              cmnd_num == CMNDS::JUMP_BELOW || cmnd_num == CMNDS::JUMP_BELOW_OR_EQUAL ||
+              cmnd_num == CMNDS::JUMP_EQUAL || cmnd_num == CMNDS::JUMP_NOT_EQUAL || cmnd_num == CMNDS::CALL
+              && ( arg_type == 1 ) ) && i == spu->ip - sizeof( StackElem ) - 1 )
         {
-            sep = "\033[33;1m>";
-
-            //printf( "\t%d %d\n", spu->fi - sizeof( StackElem ), i );
+            sep = GREEN_COLOR ">";
         }
 
-        printf( "\t%1scommand: %02x %02x", sep, cmnd_num, arg_type );
+        printf( "\t%6scommand: %02X %01X", sep, cmnd_num, arg_type );
 
-        if( cmnd_num == CMNDS::PUSH  && arg_type == 1 )
+        if( ( cmnd_num == CMNDS::PUSH ||
+              cmnd_num == CMNDS::JUMP || cmnd_num == CMNDS::JUMP_ABOVE || cmnd_num == CMNDS::JUMP_ABOVE_OR_EQUAL ||
+              cmnd_num == CMNDS::JUMP_BELOW || cmnd_num == CMNDS::JUMP_BELOW_OR_EQUAL ||
+              cmnd_num == CMNDS::JUMP_EQUAL || cmnd_num == CMNDS::JUMP_NOT_EQUAL || cmnd_num == CMNDS::CALL ) && arg_type == 1 )
         {
             printf( "  arg: %lld", *( StackElem* ) ( p + 1 ) );
 
@@ -81,7 +90,7 @@ void PrintCommands( SPU* spu, u_int64_t size )
             i += sizeof( StackElem );
         }
 
-        if( cmnd_num == CMNDS::POP_REG || ( cmnd_num == CMNDS::PUSH && arg_type == 2 ) )
+        if( ( cmnd_num == CMNDS::POP || cmnd_num == CMNDS::PUSH ) && arg_type == 2 )
         {
             printf( "  arg: %d", *( char* ) ( p + 1 ) );
 
@@ -92,7 +101,7 @@ void PrintCommands( SPU* spu, u_int64_t size )
 
         putchar( '\n' );
 
-        printf( "\033[0m" );
+        SET_DEFAULT_COLOR;
 
         sep = " ";
     }
@@ -100,12 +109,12 @@ void PrintCommands( SPU* spu, u_int64_t size )
     printf( "\t}\n" );
 }
 
-static void SPU_Dump( SPU* spu, u_int64_t size )
+static void SPU_Dump( SPU* spu, int64_t size )
 {
     printf( "SPU\n"
             "{\n" );
 
-    printf( "\tfi = %llu\n", spu->fi );
+    printf( "\tfi = %llu\n", spu->ip );
     
     PrintCommands( spu, size );
 
@@ -113,7 +122,7 @@ static void SPU_Dump( SPU* spu, u_int64_t size )
             "\trbx = %lld\n"
             "\trcx = %lld\n"
             "\trdx = %lld\n",
-            spu->rax, spu->rbx, spu->rcx, spu->rdx );
+            spu->regs.names.rax, spu->regs.names.rbx, spu->regs.names.rcx, spu->regs.names.rdx );
 
     printf( "}\n" );
 }
@@ -122,73 +131,33 @@ static StackElem PopToReg( SPU* spu, int reg_num )
 {    
     StackElem a = 0;
 
-    switch( reg_num )
+    if( reg_num < MIN_REG_NUM || reg_num > MAX_REG_NUM )
     {
-        case 1:
-            StackPop( &spu->stk, &a );
-
-            spu->rax = a;
-
-            return spu->rax;
-        
-        case 2:
-            StackPop( &spu->stk, &a );
-
-            spu->rbx = a;
-
-            return spu->rbx;
-        
-        case 3:
-            StackPop( &spu->stk, &a );
-
-            spu->rcx = a;
-
-            return spu->rcx;
-
-        case 4:
-            StackPop( &spu->stk, &a );
-
-            spu->rdx = a;
-
-            return spu->rdx;
-
-        default:
-            return 0xdeaddead;
+        return DEAD_INT;
     }
+
+    StackPop( &spu->stk, &a );
+
+    spu->regs.buff[reg_num - 1] = a;
+
+    return a;
 }
 
 static StackElem PushFromReg( SPU* spu, int reg_num )
 {
-    switch( reg_num )
+    if( reg_num < MIN_REG_NUM || reg_num > MAX_REG_NUM )
     {
-        case 1:
-            StackPush( &spu->stk, spu->rax );
-
-            return spu->rax;
-        
-        case 2:
-            StackPush( &spu->stk, spu->rbx );
-
-            return spu->rbx;
-        
-        case 3:
-            StackPush( &spu->stk, spu->rcx );
-
-            return spu->rcx;
-
-        case 4:
-            StackPush( &spu->stk, spu->rdx );
-
-            return spu->rdx;
-
-        default:
-            return 0xdeaddead;
+        return DEAD_INT;
     }
+
+    StackPush( &spu->stk, spu->regs.buff[reg_num - 1] );
+
+    return spu->regs.buff[reg_num - 1];
 }
 
-void SPU_Ctor( SPU* spu, u_int64_t comandsBuffSize )
+static void SPU_Ctor( SPU* spu, int64_t comandsBuffSize )
 {   
-    spu->fi = 0;
+    spu->ip = 0;
 
     spu->commands = calloc( 1, comandsBuffSize );
 
@@ -199,110 +168,97 @@ void SPU_Ctor( SPU* spu, u_int64_t comandsBuffSize )
         abort();
     }
 
-    spu->rax = 0;
-
-    spu->rbx = 0;
-
-    spu->rcx = 0;
-
-    spu->rdx = 0;
+    for( int i = 0; i < sizeof( spu->regs ) / sizeof( StackElem ); i++ )
+        spu->regs.buff[i] = 0;
 
     STACK_CTOR( &spu->stk );
 
     return;
 }
 
-CALC_ERRS Calculate( const char* name )
-{
-    FILE* cmnds = fopen( name, "rb" );
-    int64_t size = getFileSize( name );
+static void SPU_Dtor( SPU* spu, u_int64_t comandsBuffSize )
+{   
+    spu->ip = 0;
 
-    printf( "%d\n", size );
-
-    SPU spu = {};
-    SPU_Ctor( &spu, size );
-
-    fread( spu.commands, 1, size, cmnds );
-
-    int cmnd = CMNDS::HALT;
-
-    StackElem arg = 0;
-    
-    size_t line = 0;
-
-    for( ; spu.fi < size; line++, spu.fi++ )
+    if( !spu->commands )
     {
-        *( ( char* ) &cmnd ) = *( ( char* ) spu.commands + spu.fi );
+        free( spu->commands );
+    }
 
-        int cmnd_num = cmnd & 0xf;
+    spu->commands = nullptr;
 
-        int arg_type = cmnd >> 4;
+    for( int i = 0; i < sizeof( spu->regs ) / sizeof( StackElem ); i++ )
+        spu->regs.buff[i] = 0 ;
 
-        printf( "%d %lld\n", cmnd, arg_type );
+    return;
+}
 
-        switch( cmnd_num )
-        {
-            case CMNDS::IN:
+#define _COMMAND_( name, num, args, code )              \
+code
+
+
+static CALC_ERRS DoCommand( SPU* spu, size_t line )
+{   
+    StackElem arg = 0;
+
+    int cmnd = 0;
+
+    *( ( char* ) &cmnd ) = *( ( char* ) spu->commands + spu->ip );
+
+    ++spu->ip;
+
+    int cmnd_num = cmnd & 0x1f;
+
+    int arg_type = cmnd >> 5;
+
+    printf( "%d %lld\n", cmnd, arg_type );
+
+    switch( cmnd_num )
+    {
+        case CMNDS::IN:
+            printf( "-------------------------------------------------------------------\n"
+                    "Please, enter number: " );
+
+            if( scanf( "%lld", &arg ) != 1 )
+            {
+                printf( "SYNTAX ERROR in line: %zu\n"
+                        "-------------------------------------------------------------------\n\n",
+                        line );
+
+                abort();
+            }
+
+            StackPush( &spu->stk, arg * MULTIPLYER );
+
+            printf( "successfully pushed %lld \n"
+                    "-------------------------------------------------------------------\n\n", arg );
+
+            break;
+
+        case CMNDS::PUSH:
+            if( arg_type == 1 )     //pushing a number
+            {
+                memcpy( &arg, ( char* ) spu->commands + spu->ip, sizeof( StackElem ) );
+
+                spu->ip += sizeof( StackElem );
+
+                StackPush( &spu->stk, arg * MULTIPLYER );
+
                 printf( "-------------------------------------------------------------------\n"
-                        "Please, enter number: " );
-
-                if( scanf( "%lld", &arg ) != 1 )
-                {
-                    printf( "SYNTAX ERROR in line: %zu\n"
-                            "-------------------------------------------------------------------\n\n",
-                            line );
-
-                    abort();
-                }
-
-                StackPush( &spu.stk, arg * MULTIPLYER );
-
-                printf( "successfully pushed %lld \n"
+                        "successfully pushed %lld \n"
                         "-------------------------------------------------------------------\n\n", arg );
 
                 break;
+            }
+            else if( arg_type == 2 )    //pushing the number from register
+            {
+                arg = *( ( char* ) spu->commands + spu->ip );
+                
+                ++spu->ip;
 
-            case CMNDS::PUSH:
-                if( arg_type == 1 )     //pushing a number
+                if( arg < MIN_REG_NUM || arg > MAX_REG_NUM )
                 {
-                    arg = *( StackElem* ) ( ( char* ) spu.commands + spu.fi + 1 );
-
-                    spu.fi += sizeof( StackElem );
-
-                    StackPush( &spu.stk, arg * MULTIPLYER );
-
                     printf( "-------------------------------------------------------------------\n"
-                            "successfully pushed %lld \n"
-                            "-------------------------------------------------------------------\n\n", arg );
-
-                    goto swp_end;
-                }
-                else if( arg_type == 2 )    //pushing the number from register
-                {
-                    arg = *( ( char* ) spu.commands + ++spu.fi );
-
-                    if( 5 <= arg || arg <= 0 )
-                    {
-                        printf( "-------------------------------------------------------------------\n"
-                                "SYNTAX ERROR in line: %zu\n"
-                                "-------------------------------------------------------------------\n\n",
-                                line );
-
-                        abort();
-                    }
-
-                    StackElem temp = PushFromReg( &spu, arg );
-
-                    printf( "-------------------------------------------------------------------\n"
-                            "successfully pushed %lld from register r%cx \n"
-                            "-------------------------------------------------------------------\n\n",
-                            temp, 'a' + ( int ) arg - 1 );
-
-                    goto swp_end;
-                }
-                else
-                {
-                    printf( "--------------------------------------------------------------------\n"
                             "SYNTAX ERROR in line: %zu\n"
                             "-------------------------------------------------------------------\n\n",
                             line );
@@ -310,158 +266,459 @@ CALC_ERRS Calculate( const char* name )
                     abort();
                 }
 
-            case CMNDS::ADDITION:
-            {
-                StackElem a = 0;
-
-                StackElem b = 0;
-
-                StackPop( &spu.stk, &a );
-
-                StackPop( &spu.stk, &b );
-
-                StackPush( &spu.stk, b + a );
+                StackElem temp = PushFromReg( spu, arg );
 
                 printf( "-------------------------------------------------------------------\n"
-                        "successfully completed addtion: %lld + %lld = %lld \n"
-                        "-------------------------------------------------------------------\n\n", 
-                        b, a, b + a );
-
-                goto swp_end;
-            }
-
-            case CMNDS::SUBTRACTION:
-            {
-                StackElem a = 0;
-
-                StackElem b = 0;            
-
-                StackPop( &spu.stk, &a );
-
-                StackPop( &spu.stk, &b );
-
-                StackPush( &spu.stk, b - a );
-
-                printf( "-------------------------------------------------------------------\n"
-                        "successfully completed subtraction: %lld - %lld = %lld \n"
+                        "successfully pushed %lld from register r%cx \n"
                         "-------------------------------------------------------------------\n\n",
-                        b, a, b - a );
+                        temp, 'a' + ( int ) arg - 1 );
 
-                goto swp_end;
+                break;
             }
-
-            case CMNDS::MULTIPLICATION:
+            else
             {
-                StackElem a = 0;
-
-                StackElem b = 0;
-
-                StackPop( &spu.stk, &a );
-
-                StackPop( &spu.stk, &b );
-
-                StackPush( &spu.stk, a * b / MULTIPLYER );
-
-                printf( "-------------------------------------------------------------------\n"
-                        "successfully completed multiplication: %lld * %lld = %lld \n"
-                        "-------------------------------------------------------------------\n\n",
-                        b, a, a * b / MULTIPLYER );
-
-                goto swp_end;
-            }
-
-            case CMNDS::DIVISION:
-            {
-                StackElem a = 0;
-
-                StackElem b = 0;
-            
-                StackPop( &spu.stk, &a );
-
-                StackPop( &spu.stk, &b );
-
-                if( a == 0 )
-                {
-                    printf( "-------------------------------------------------------------------\n"
-                            "error: division by zero, line: %zu\n"
-                            "-------------------------------------------------------------------\n\n" );
-
-                    goto end;
-                }
-
-                StackPush( &spu.stk, ( b * MULTIPLYER ) / a );
-
-                printf( "-------------------------------------------------------------------\n"
-                        "successfully completed division: %lld / %lld = %lld \n"
-                        "-------------------------------------------------------------------\n\n", 
-                        b, a, ( b * MULTIPLYER ) / a );
-
-                goto swp_end;
-            }
-
-            case CMNDS::OUT:
-            {
-                StackElem a = 0;
-
-                StackPop( &spu.stk, &a );
-
-                double res = ( double ) a / MULTIPLYER;
-                
-                printf( ">------------------------------------------------------------------\n"
-                        "result of calculation: %g\n"
-                        ">------------------------------------------------------------------\n\n",
-                        res);
-
-                goto swp_end;
-            }
-
-            case CMNDS::HALT:
-                printf( "x-----------------------------------------------------------------\n"
-                        "HLT in line %zu, running away...\n"
-                        "x-----------------------------------------------------------------\n\n",
-                        line );
-                
-                goto end;
-
-            case CMNDS::POP_REG:
-            {
-                if( arg_type != 2 )
-                    return CALC_ERRS::SYNTAX_ERR;
-                
-                arg = *( ( char* ) spu.commands + ( ++spu.fi ) );
-
-                StackElem temp = PopToReg( &spu, arg );
-
-                printf( "------------------------------------------------------------------\n"
-                        "successfully poped %lld to register r%cx\n"
-                        "------------------------------------------------------------------\n\n",
-                        temp, arg + 'a' - 1 );
-
-                goto swp_end;
-            }
-
-            default:
-                printf( "-------------------------------------------------------------------\n"
+                printf( "--------------------------------------------------------------------\n"
                         "SYNTAX ERROR in line: %zu\n"
                         "-------------------------------------------------------------------\n\n",
                         line );
 
-                return CALC_ERRS::SYNTAX_ERR;
+                abort();
+            }
 
-            swp_end:
-                break;
+        case CMNDS::ADDITION:
+        {
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            StackPush( &spu->stk, b + a );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully completed addtion: %lld + %lld = %lld \n"
+                    "-------------------------------------------------------------------\n\n", 
+                    b, a, b + a );
+
+            break;
         }
 
-        arg = 0;
+        case CMNDS::SUBTRACTION:
+        {
+            StackElem a = 0;
+
+            StackElem b = 0;            
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            StackPush( &spu->stk, b - a );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully completed subtraction: %lld - %lld = %lld \n"
+                    "-------------------------------------------------------------------\n\n",
+                    b, a, b - a );
+
+            break;
+        }
+
+        case CMNDS::MULTIPLICATION:
+        {
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            StackPush( &spu->stk, a * b / MULTIPLYER );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully completed multiplication: %lld * %lld = %lld \n"
+                    "-------------------------------------------------------------------\n\n",
+                    b, a, a * b / MULTIPLYER );
+
+            break;
+        }
+
+        case CMNDS::DIVISION:
+        {
+            StackElem a = 0;
+
+            StackElem b = 0;
+        
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            if( a == 0 )
+            {
+                printf( "-------------------------------------------------------------------\n"
+                        "error: division by zero, line: %zu\n"
+                        "-------------------------------------------------------------------\n\n" );
+
+                return CALC_ERRS::SYNTAX_ERR;
+            }
+
+            StackPush( &spu->stk, ( b * MULTIPLYER ) / a );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully completed division: %lld / %lld = %lld \n"
+                    "-------------------------------------------------------------------\n\n", 
+                    b, a, ( b * MULTIPLYER ) / a );
+
+            break;
+        }
+
+        case CMNDS::OUT:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );
+
+            double res = ( double ) a / MULTIPLYER;
+            
+            printf( ">------------------------------------------------------------------\n"
+                    "result of calculation: %g\n"
+                    ">------------------------------------------------------------------\n\n",
+                    res);
+
+            break;
+        }
+
+        case CMNDS::HALT:
+            printf( "x-----------------------------------------------------------------\n"
+                    "HLT in line %zu, running away...\n"
+                    "x-----------------------------------------------------------------\n\n",
+                    line );
+            
+            abort();
+
+            return CALC_ERRS::OK;
+
+        case CMNDS::POP:
+        {
+            if( arg_type != 2 )
+                return CALC_ERRS::SYNTAX_ERR;
+            
+            arg = *( ( char* ) spu->commands + spu->ip );
+
+            ++spu->ip;
+
+            StackElem temp = PopToReg( spu, arg );
+
+            printf( "------------------------------------------------------------------\n"
+                    "successfully poped %lld to register r%cx\n"
+                    "------------------------------------------------------------------\n\n",
+                    temp, arg + 'a' - 1 );
+
+            break;
+        }
+
+        case CMNDS::JUMP_ABOVE:             //Jump if a > b
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            if( a > b )
+            {
+                printf( "-------------------------------------------------------------------\n"
+                        "JA %lld > %lld successfully jumped to ip -> %llu \n"
+                        "-------------------------------------------------------------------\n\n",
+                        a, b, spu->ip );
+
+                spu->ip = arg;
+            }
+
+            break;
+        }
+
+        case CMNDS::JUMP_ABOVE_OR_EQUAL:             //Jump if a >= b
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            if( a >= b )
+            {
+                printf( "-------------------------------------------------------------------\n"
+                        "JAE %lld >= %lld successfully jumped to ip -> %llu \n"
+                        "-------------------------------------------------------------------\n\n",
+                        a, b, spu->ip );
+            
+                spu->ip = arg;
+            }
+            break;
+        }
+
+        case CMNDS::JUMP_BELOW:             //Jump if a < b
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            if( a < b )
+            {
+                spu->ip = arg;
+
+                printf( "-------------------------------------------------------------------\n"
+                        "JB %lld < %lld successfully jumped to ip -> %llu \n"
+                        "-------------------------------------------------------------------\n\n",
+                        a, b, spu->ip );
+            }
+
+            break;
+        }
+
+        case CMNDS::JUMP_BELOW_OR_EQUAL:             //Jump if a <= b
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            if( a <= b )
+            {
+                spu->ip = arg;
+
+                printf( "-------------------------------------------------------------------\n"
+                        "JBE %lld <= %lld successfully jumped to ip -> %llu \n"
+                        "-------------------------------------------------------------------\n\n",
+                        a, b, spu->ip );
+            }
+
+            break;
+        }
+
+        case CMNDS::JUMP_EQUAL:             //Jump if a == b
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            if( a == b )
+            {
+                spu->ip = arg;
+
+                printf( "-------------------------------------------------------------------\n"
+                        "JE %lld == %lld successfully jumped to ip -> %llu \n"
+                        "-------------------------------------------------------------------\n\n",
+                        a, b, spu->ip );
+            }
+
+            break;
+        }
+
+        case CMNDS::JUMP_NOT_EQUAL:             //Jump if a != b
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            StackElem a = 0;
+
+            StackElem b = 0;
+
+            StackPop( &spu->stk, &a );
+
+            StackPop( &spu->stk, &b );
+
+            if( a != b )
+            {
+                spu->ip = arg;
+
+                printf( "-------------------------------------------------------------------\n"
+                        "JNE %lld != %lld successfully jumped to ip -> %llu \n"
+                        "-------------------------------------------------------------------\n\n",
+                        a, b, spu->ip );
+            }
+
+            break;
+        }
+
+        case CMNDS::JUMP:             //Jump
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            spu->ip = arg;
+
+            printf( "-------------------------------------------------------------------\n"
+                    "JMP successfully jumped to ip -> %llu \n"
+                    "-------------------------------------------------------------------\n\n",
+                    spu->ip );
+
+            break;
+        }
+
+        case CMNDS::CALL:             //Call
+        {
+            if( arg_type != 1 )
+            {
+                printf( "CALL INVALID ARGUMENT\n" );
+
+                return CALC_ERRS::SYNTAX_ERR;
+            }
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            StackPush( &spu->stk, spu->ip );
+
+            spu->ip = arg;
+
+            printf( "-------------------------------------------------------------------\n"
+                    "CALL successfully jumped to ip -> %llu \n"
+                    "-------------------------------------------------------------------\n\n",
+                    spu->ip );
+
+            break;
+        }
+
+        case CMNDS::RETURN:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );            
+
+            spu->ip = a;
+
+            printf( "-------------------------------------------------------------------\n"
+                    "RET successfully jumped back to ip -> %llu \n"
+                    "-------------------------------------------------------------------\n\n",
+                    spu->ip );
+
+            break;
+        }
+
+        case CMNDS::SQUARE_ROOT:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );      
+
+            StackElem root = a;      
+
+            root = sqrt( ( double ) a / MULTIPLYER ) * MULTIPLYER;
+
+            StackPush( &spu->stk, root );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully calculated square root of %lld -> %lld \n"
+                    "-------------------------------------------------------------------\n\n",
+                    a, root);
+
+            break;
+        }
+
+        default:
+            printf( "-------------------------------------------------------------------\n"
+                    "SYNTAX ERROR in line: %zu\n"
+                    "-------------------------------------------------------------------\n\n",
+                    line );
+
+            return CALC_ERRS::SYNTAX_ERR;
     }
 
-    end:
-        /*for( size_t i = 0; i < spu.fi; i++ )
+    return CALC_ERRS::SYNTAX_ERR;
+}
+
+int Calculate( const char* name )
+{
+    FILE* cmnds = fopen( name, "rb" );
+    int64_t size = getFileSize( name );
+
+    printf( "%lld\n", size );
+
+    SPU spu = {};
+    SPU_Ctor( &spu, size );
+
+    fread( spu.commands, 1, size, cmnds );
+    
+    size_t line = 0;
+
+    for( ; spu.ip < ( u_int64_t ) size; line++ )
+    {
+        if( int err = SPU_Verify( &spu ) )
         {
-            printf( "%zu: 0X: %X dec: %d\n", i, *( ( unsigned char* ) spu.commands + i ), *( ( unsigned char* ) spu.commands + i ) );
-        }*/
+            SPU_Dump( &spu, size );
 
-        SPU_Dump( &spu, size );
+            printf( "0x%x\n", err );
 
-        return CALC_ERRS::OK;
+            return err;
+        }
+
+        DoCommand( &spu, line );
+    }
+
+    SPU_Dtor( &spu, size );
+
+    return CALC_ERRS::OK;
 }

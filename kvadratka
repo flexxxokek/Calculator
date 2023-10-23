@@ -1,0 +1,81 @@
+#############   main
+
+start:
+
+call input
+
+call discr
+
+push rdx
+push 0
+ja end
+
+push rdx
+push 0
+je 1root
+
+jmp 2root
+
+#############   endof main
+
+end:
+hlt
+
+input:      #input to rax, rbx, rcx
+in
+pop rax
+in
+pop rbx
+in
+pop rcx
+
+discr:      #calculating discriminant
+push rbx   
+push rbx
+mul
+push 4
+push rax
+push rcx
+mul
+mul
+sub
+pop rdx     #returning the value to rdx
+ret
+
+
+1root:      #1 root case
+push rbx
+push -1
+mul
+push rax
+div
+push 2
+div
+out
+jmp end
+
+
+2root:      #2 roots case
+push rbx
+push -1
+mul
+push rdx
+sqrt
+add
+push rax
+div
+push 2
+div
+push rbx
+push -1
+mul
+push rdx
+sqrt
+sub
+push rax
+div
+push 2
+div
+out
+out
+jmp end

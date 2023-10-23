@@ -1,9 +1,0 @@
-push 1565
-push 25555
-div
-pop
-in
-push rax
-div
-out
-push 12
