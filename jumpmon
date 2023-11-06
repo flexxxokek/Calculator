@@ -1,0 +1,10 @@
+jm start
+
+#It will happen on Monday
+start:
+push 1
+push 2
+add
+sin
+out
+hlt

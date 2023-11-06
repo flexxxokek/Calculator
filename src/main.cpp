@@ -8,5 +8,9 @@ int main()
 
     Calculate( fileName );
 
+    /*Draw();
+
+    getchar();*/
+
     return 0;
 }

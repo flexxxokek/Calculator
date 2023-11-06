@@ -1,0 +1,4 @@
+push [242]
+push [250]
+pop [20]
+hlt

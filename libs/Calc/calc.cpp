@@ -1,23 +1,5 @@
 #include "calc.h"
 
-const char* CMNDS_NAME[NUM_OF_CMNDS] = { "in",
-                                         "push",
-                                         "add",
-                                         "sub",
-                                         "mul",
-                                         "div",
-                                         "out",
-                                         "hlt",
-                                         "pop",
-                                         "ja",
-                                         "jae",
-                                         "jb",
-                                         "jbe",
-                                         "je",
-                                         "jne",
-                                         "jmp",
-                                         "jm"  };
-
 static StackElem PopToReg( SPU* spu, int reg_num );
 
 static StackElem PushFromReg( SPU* spu, int reg_num );
@@ -67,7 +49,7 @@ static void PrintCommands( SPU* spu, int64_t size )
             sep = GREEN_COLOR ">";
         }
 
-        if( ( cmnd_num == CMNDS::PUSH ||
+        if( ( cmnd_num == CMNDS::PUSH || cmnd_num == CMNDS::POP ||
               cmnd_num == CMNDS::JUMP || cmnd_num == CMNDS::JUMP_ABOVE || cmnd_num == CMNDS::JUMP_ABOVE_OR_EQUAL ||
               cmnd_num == CMNDS::JUMP_BELOW || cmnd_num == CMNDS::JUMP_BELOW_OR_EQUAL ||
               cmnd_num == CMNDS::JUMP_EQUAL || cmnd_num == CMNDS::JUMP_NOT_EQUAL || cmnd_num == CMNDS::CALL
@@ -78,10 +60,10 @@ static void PrintCommands( SPU* spu, int64_t size )
 
         printf( "\t%6scommand: %02X %01X", sep, cmnd_num, arg_type );
 
-        if( ( cmnd_num == CMNDS::PUSH ||
+        if( ( cmnd_num == CMNDS::PUSH || cmnd_num == CMNDS::POP ||
               cmnd_num == CMNDS::JUMP || cmnd_num == CMNDS::JUMP_ABOVE || cmnd_num == CMNDS::JUMP_ABOVE_OR_EQUAL ||
               cmnd_num == CMNDS::JUMP_BELOW || cmnd_num == CMNDS::JUMP_BELOW_OR_EQUAL ||
-              cmnd_num == CMNDS::JUMP_EQUAL || cmnd_num == CMNDS::JUMP_NOT_EQUAL || cmnd_num == CMNDS::CALL ) && arg_type == 1 )
+              cmnd_num == CMNDS::JUMP_EQUAL || cmnd_num == CMNDS::JUMP_NOT_EQUAL || cmnd_num == CMNDS::CALL ) && ( arg_type == 1 || arg_type == 3 ) )
         {
             printf( "  arg: %lld", *( StackElem* ) ( p + 1 ) );
 
@@ -163,13 +145,27 @@ static void SPU_Ctor( SPU* spu, int64_t comandsBuffSize )
 
     if( !spu->commands )
     {
-        perror( "calloc error:" );
+        perror( "Lack of memory for spu->commands" );
 
         abort();
     }
 
-    for( int i = 0; i < sizeof( spu->regs ) / sizeof( StackElem ); i++ )
+    spu->RAM = ( StackElem* ) calloc( NUM_OF_RAM_ELEMS, sizeof( StackElem ) );
+
+    if( !spu->RAM )
+    {
+        free( spu->commands );
+
+        perror( "Lack of memory for spu->RAM" );
+
+        abort();
+    }
+
+    for( unsigned long long i = 0; i < sizeof( spu->regs ) / sizeof( StackElem ); i++ )
         spu->regs.buff[i] = 0;
+
+    for( unsigned long long i = 0; i < NUM_OF_RAM_ELEMS; i++ )
+        spu->RAM[i] = 0;
 
     STACK_CTOR( &spu->stk );
 
@@ -195,7 +191,6 @@ static void SPU_Dtor( SPU* spu, u_int64_t comandsBuffSize )
 
 #define _COMMAND_( name, num, args, code )              \
 code
-
 
 static CALC_ERRS DoCommand( SPU* spu, size_t line )
 {   
@@ -272,6 +267,23 @@ static CALC_ERRS DoCommand( SPU* spu, size_t line )
                         "successfully pushed %lld from register r%cx \n"
                         "-------------------------------------------------------------------\n\n",
                         temp, 'a' + ( int ) arg - 1 );
+
+                break;
+            }
+            else if( arg_type == 3 )    //pushing number from RAM
+            {
+                memcpy( &arg, ( char* ) spu->commands + spu->ip, sizeof( StackElem ) );
+
+                spu->ip += sizeof( StackElem );
+
+                printf( "ip: %lld\n", spu->ip );
+
+                StackPush( &spu->stk, spu->RAM[arg] );
+
+                printf( "-------------------------------------------------------------------\n"
+                        "successfully pushed %lld from RAM on position %lld ip:%lld\n"
+                        "-------------------------------------------------------------------\n\n",
+                        spu->RAM[arg], arg, spu->ip );
 
                 break;
             }
@@ -402,21 +414,44 @@ static CALC_ERRS DoCommand( SPU* spu, size_t line )
 
         case CMNDS::POP:
         {
-            if( arg_type != 2 )
-                return CALC_ERRS::SYNTAX_ERR;
-            
-            arg = *( ( char* ) spu->commands + spu->ip );
+            if( arg_type == 2 )
+            {
+                arg = *( ( char* ) spu->commands + spu->ip );
 
-            ++spu->ip;
+                ++spu->ip;
 
-            StackElem temp = PopToReg( spu, arg );
+                StackElem temp = PopToReg( spu, arg );
 
-            printf( "------------------------------------------------------------------\n"
-                    "successfully poped %lld to register r%cx\n"
-                    "------------------------------------------------------------------\n\n",
-                    temp, arg + 'a' - 1 );
+                printf( "------------------------------------------------------------------\n"
+                        "successfully poped %lld to register r%cx\n"
+                        "------------------------------------------------------------------\n\n",
+                        temp, arg + 'a' - 1 );
 
-            break;
+                break;
+            }
+            else if( arg_type == 3 )
+            {
+                memcpy( &arg, ( char* ) spu->commands + spu->ip, sizeof( StackElem ) );
+
+                spu->ip += sizeof( int64_t );
+
+                printf( "ip: %lld\n", spu->ip );
+
+                StackElem a = 0;
+
+                StackPop( &spu->stk, &a );
+
+                spu->RAM[arg] = a;
+
+                printf( "-------------------------------------------------------------------\n"
+                        "successfully pushed %lld from RAM on position %lld ip:%lld\n"
+                        "-------------------------------------------------------------------\n\n",
+                        spu->RAM[arg], arg, spu->ip );
+
+                break;
+            }
+
+            return CALC_ERRS::SYNTAX_ERR;
         }
 
         case CMNDS::JUMP_ABOVE:             //Jump if a > b
@@ -590,7 +625,7 @@ static CALC_ERRS DoCommand( SPU* spu, size_t line )
                 spu->ip = arg;
 
                 printf( "-------------------------------------------------------------------\n"
-                        "JNE %lld != %lld successfully jumped to ip -> %llu \n"
+                        "JNE %lld != %lld successfully jumped to ip -> %lu \n"
                         "-------------------------------------------------------------------\n\n",
                         a, b, spu->ip );
             }
@@ -678,6 +713,129 @@ static CALC_ERRS DoCommand( SPU* spu, size_t line )
             break;
         }
 
+        case CMNDS::BITL:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );      
+
+            StackElem res = a << 1;
+
+            StackPush( &spu->stk, res );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully calculated  %lld << 1 \n"
+                    "-------------------------------------------------------------------\n\n",
+                    a );
+
+            break;
+        }
+
+        case CMNDS::BITR:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );      
+
+            StackElem res = a >> 1;
+
+            StackPush( &spu->stk, res );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully calculated  %lld >> 1 \n"
+                    "-------------------------------------------------------------------\n\n",
+                    a );
+
+            break;
+        }
+
+        case CMNDS::SIN:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );      
+
+            StackElem sinus = sin( ( double ) a / MULTIPLYER ) * MULTIPLYER;
+
+            StackPush( &spu->stk, sinus );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully calculated  sin( %lld ) = %lld \n"
+                    "-------------------------------------------------------------------\n\n",
+                    a, sinus );
+
+            break;
+        }
+
+        case CMNDS::COS:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );      
+
+            StackElem cosinus = cos( ( double ) a / MULTIPLYER ) * MULTIPLYER;
+
+            StackPush( &spu->stk, cosinus );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully calculated  sin( %lld ) = %lld \n"
+                    "-------------------------------------------------------------------\n\n",
+                    a, cosinus );
+
+            break;
+        }
+
+        case CMNDS::ABS:
+        {
+            StackElem a = 0;
+
+            StackPop( &spu->stk, &a );      
+
+            StackElem absel = abs( a );
+
+            StackPush( &spu->stk, absel );
+
+            printf( "-------------------------------------------------------------------\n"
+                    "successfully calculated abs( %lld ) = %lld \n"
+                    "-------------------------------------------------------------------\n\n",
+                    a, absel );
+
+            break;
+        }
+
+        case CMNDS::JUMP_MONDAYS:
+        {
+            if( arg_type != 1 )
+                return CALC_ERRS::SYNTAX_ERR;
+
+            time_t timer = {};
+
+            tm* calendar = NULL;
+
+            do
+            {
+                time( &timer );
+
+                calendar = gmtime( &timer );
+
+                printf( "cruely monday come!\n" );
+            }
+            while( calendar->tm_wday != 1 );
+
+            arg = *( StackElem* ) ( ( char* ) spu->commands + spu->ip );
+
+            spu->ip += sizeof( StackElem );
+
+            spu->ip = arg;
+
+            printf( "-------------------------------------------------------------------\n"
+                    "JMP successfully jumped to ip -> %llu \n"
+                    "-------------------------------------------------------------------\n\n",
+                    spu->ip );
+
+            break;
+        }
+
         default:
             printf( "-------------------------------------------------------------------\n"
                     "SYNTAX ERROR in line: %zu\n"
@@ -704,8 +862,12 @@ int Calculate( const char* name )
     
     size_t line = 0;
 
+    SPU_Dump( &spu, size );
+
     for( ; spu.ip < ( u_int64_t ) size; line++ )
     {
+        printf( "line: %zu\n", line );
+
         if( int err = SPU_Verify( &spu ) )
         {
             SPU_Dump( &spu, size );
@@ -721,4 +883,47 @@ int Calculate( const char* name )
     SPU_Dtor( &spu, size );
 
     return CALC_ERRS::OK;
+}
+
+void Draw()
+{
+    SDL_DisplayMode displayMode;
+    
+    if( SDL_Init( SDL_INIT_EVERYTHING ) )
+    {
+        printf( "SDL ERROR DRAWING UNSUCCESSFUL\n" );
+
+        return;
+    }
+
+    int err = SDL_GetDesktopDisplayMode( 0 /*number of monitor*/, &displayMode );
+
+    SDL_Window* win = SDL_CreateWindow( "title", displayMode.w / 2, displayMode.h / 2, displayMode.w / 2, displayMode.h / 2, SDL_WINDOW_SHOWN );
+
+    SDL_Renderer* render = SDL_CreateRenderer( win, -1, SDL_RENDERER_PRESENTVSYNC );
+
+    SDL_SetRenderDrawColor( render, 255, 255, 0, 255 );
+
+    SDL_Event event = {};
+
+    //SDL_PollEvent( )
+
+    for( int i = 0; i < 1 << 10; i++ )
+    {
+        //ConditionMachine
+
+        SDL_RenderDrawPoint( render, i, sin( i/50.0 ) * 100 + 200 );
+
+        SDL_RenderPresent( render );
+
+        SDL_Delay( 10 );
+    }
+
+    SDL_Rect dot
+    {
+        120, 120,
+        120, 120
+    };
+
+    
 }

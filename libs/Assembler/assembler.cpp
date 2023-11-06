@@ -1,5 +1,7 @@
 #include "assembler.h"
 
+// jump monday, friday, sin, cos, <<, >>, abs.
+
 static u_int64_t MatchLabel( const char* ptr, Label* labels, size_t numOfLabels );
 
 static bool fillUndefLabels( void* voidP, Label* labels, size_t numOfLabels, Label* undefLabels, size_t numOfUndefLabels );
@@ -15,7 +17,7 @@ static int ParseLine( const char* ptr, char* cmnd,  StackElem* elem, char strArg
 
     char temp[2] = "";
 
-    if( char* temp = ( char* ) strchr( ptr, '#' ) )
+    if( char* temp = ( char* ) strchr( ptr, '#' ) ) //pitonist poganii. -ito norm.
         *temp = '\0';
 
     if( ( num = sscanf( ptr, LABEL_SPEC "%1s", strArg, temp ) ) >= 1 )
@@ -61,6 +63,12 @@ static int ParseLine( const char* ptr, char* cmnd,  StackElem* elem, char strArg
         {
             return 1;
         }
+    }
+
+    if( ( num = sscanf( ptr, CMND_SPECIFICATOR " [%lld]%1s" , cmnd, elem, temp ) ) >= 1 )
+    {
+        if( num == 2 )
+            return 5;
     }
 
     if( ( num = sscanf( ptr, CMND_SPECIFICATOR "%4s %1s", cmnd, strArg, temp ) ) >= 1 )
@@ -141,13 +149,13 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
 
     char strArg[MAX_LABEL_LEN] = "";
 
-    int type = ParseLine( src->strData[line].ptr, cmnd, &arg, strArg, labels, numOfLabels, ip );
+    int type = ParseLine( src->strData[line].ptr, cmnd, &arg ,strArg, labels, numOfLabels, ip );
 
     puts( src->strData[line].ptr );
 
     printf( "|->%d\n", type );
 
-    if( !strcmp( cmnd, CMNDS_NAME[0] ) )     //in
+    if( !strcmp( cmnd, "in" ) )     //in
     {
         *( ( char* ) p + *ip ) = CMNDS::IN;
 
@@ -156,7 +164,7 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[1] ) )     //push
+    if( !strcmp( cmnd, "push" ) )     //push
     {
         if( type == 2 )
         {
@@ -194,9 +202,22 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
 
             return CALC_ERRS::OK;
         }
+
+        else if( type == 5 )
+        {
+            *( ( char* ) p + *ip ) = 3 << 5 | CMNDS::PUSH;
+
+            *( StackElem* ) ( ( char *) p + ++*ip ) = arg;
+
+            printf( "(%lld)\n", arg );
+
+            *ip += sizeof( StackElem );
+
+            return CALC_ERRS::OK;
+        }
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[2] ) )     //addition
+    if( !strcmp( cmnd, "add" ) )     //addition
     {
         *( ( char* ) p + *ip ) = CMNDS::ADDITION;
 
@@ -205,7 +226,7 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[3] ) )     //subtraction
+    if( !strcmp( cmnd, "sub" ) )     //subtraction
     {
         *( ( char* ) p + *ip ) = CMNDS::SUBTRACTION;
 
@@ -214,7 +235,7 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[4] ) )     //multiplication
+    if( !strcmp( cmnd, "mul" ) )     //multiplication
     {
         *( ( char* ) p + *ip ) = CMNDS::MULTIPLICATION;
 
@@ -223,7 +244,7 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[5] ) )     //division
+    if( !strcmp( cmnd, "div" ) )     //division
     {
         *( ( char* ) p + *ip ) = CMNDS::DIVISION;
 
@@ -232,7 +253,7 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[6] ) )     //out
+    if( !strcmp( cmnd, "out" ) )     //out
     {
         *( ( char* ) p + *ip ) = CMNDS::OUT;
 
@@ -241,7 +262,7 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[7] ) )    //hlt
+    if( !strcmp( cmnd, "hlt" ) )    //hlt
     {
         *( ( char* ) p + *ip ) = CMNDS::HALT;
 
@@ -250,7 +271,7 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
-    if( !strcmp( cmnd, CMNDS_NAME[8] ) )    //pop
+    if( !strcmp( cmnd, "pop" ) )    //pop
     {
         if( type == 2 )
         {
@@ -276,6 +297,18 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
 
                 return CALC_ERRS::SYNTAX_ERR;
             }
+        }
+        else if( type == 5 )
+        {
+            *( ( char* ) p + *ip ) = 3 << 5 | CMNDS::POP;
+
+            *( StackElem* ) ( ( char *) p + ++*ip ) = arg;
+
+            printf( "(%lld)\n", arg );
+
+            *ip += sizeof( StackElem );
+
+            return CALC_ERRS::OK;
         }
     }
 
@@ -641,6 +674,95 @@ static CALC_ERRS TranslateCmnd( void* p, u_int64_t* ip, Fileinf* src, size_t lin
         return CALC_ERRS::OK;
     }
 
+    if( !strcmp( cmnd, "jm" ) )     //jm
+    {
+        if( type == 3 || type == 2 )
+        {
+            u_int64_t label_ip = MatchLabel( strArg, labels, *numOfLabels );
+
+            printf( "label ip: %d\n", label_ip );
+
+            if( label_ip == -1 )
+            {
+                for( size_t i = 0; strArg[i] != '\0'; i++ )
+                {
+                    undefLabels[*numOfUndefLabels].name[i] = strArg[i];
+
+                    printf( "%c", undefLabels[*numOfUndefLabels].name[i] );
+                }
+
+                putchar( '\n' );
+
+                undefLabels[*numOfUndefLabels].ip = *ip + 1;
+
+                ++*numOfUndefLabels;
+            }
+            
+            *( ( char* ) p + *ip ) = 1 << 5 | CMNDS::JUMP_MONDAYS;
+
+            *( StackElem* ) ( ( char *) p + ++*ip ) = label_ip;
+
+            *ip += sizeof( StackElem );
+
+            return CALC_ERRS::OK;
+        }
+        else if( type == 1 )
+        {
+            *( ( char* ) p + *ip ) = 1 << 5 | CMNDS::JUMP_MONDAYS;
+
+            *( StackElem* ) ( ( char *) p + ++*ip ) = arg;
+
+            *ip += sizeof( StackElem );
+
+            return CALC_ERRS::OK;
+        }
+    }
+
+    if( !strcmp( cmnd, "sin" ) )
+    {
+        *( ( char* ) p + *ip ) = 1 << 5 | CMNDS::SIN;
+
+        ++*ip;
+
+        return CALC_ERRS::OK;
+    }
+
+    if( !strcmp( cmnd, "cos" ) )
+    {
+        *( ( char* ) p + *ip ) = 1 << 5 | CMNDS::SIN;
+
+        ++*ip;
+
+        return CALC_ERRS::OK;
+    }
+
+    if( !strcmp( cmnd, "bitl" ) )
+    {
+        *( ( char* ) p + *ip ) = 1 << 5 | CMNDS::BITL;
+
+        ++*ip;
+
+        return CALC_ERRS::OK;
+    }
+
+    if( !strcmp( cmnd, "bitr" ) )
+    {
+        *( ( char* ) p + *ip ) = 1 << 5 | CMNDS::BITR;
+
+        ++*ip;
+
+        return CALC_ERRS::OK;
+    }
+
+    if( !strcmp( cmnd, "abs" ) )
+    {
+        *( ( char* ) p + *ip ) = 1 << 5 | CMNDS::ABS;
+
+        ++*ip;
+
+        return CALC_ERRS::OK;
+    }
+    
     *( ( char* ) p + *ip ) = CMNDS::INVALID_SYNTAX;
 
     return CALC_ERRS::SYNTAX_ERR;

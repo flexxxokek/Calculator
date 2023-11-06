@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
+#include "/usr/include/SDL2/SDL.h"
 #include "../Stack/stack.h"
 #include "../Data/data.h"
 #include "../Io/io.h"
@@ -29,7 +31,7 @@ const int MAX_REG_NUM = 4;
 
 const int REG_LEN = 4;
 
-const size_t NUM_OF_RAM_ELEMS = 200;
+const unsigned long long NUM_OF_RAM_ELEMS = 1 << 20;
 
 enum CALC_ERRS
 {
@@ -59,10 +61,17 @@ enum CMNDS
     JUMP                = 16,
     CALL                = 17,
     RETURN              = 18,
-    SQUARE_ROOT         = 19
+    SQUARE_ROOT         = 19,
+    JUMP_MONDAYS        = 20,
+    SIN                 = 21,
+    COS                 = 22,
+    BITL                = 23,
+    BITR                = 24,
+    ABS                 = 25,
+
 };
 
-extern const char* CMNDS_NAME[NUM_OF_CMNDS];
+//jump monday, friday, sin, cos, <<, >>, abs.
 
 struct regNames
 {
@@ -93,7 +102,7 @@ struct SPU
 
     AllRegs regs;
 
-    StackElem RAM[NUM_OF_RAM_ELEMS];
+    StackElem* RAM;
 };
 
 enum SPU_ERRS
@@ -108,7 +117,7 @@ enum SPU_ERRS
 
 };
 
-
+void Draw();
 
 int Calculate( const char* name );
 
